@@ -188,7 +188,7 @@ const findOrPush = async <T>(collection: T[], predicate: (item: T) => boolean, f
                 environmentSpecification.groupPermissions.forEach(groupPermissionSpecification => {
                     const group = groups.find(group => group.name === groupPermissionSpecification.group);
                     if (group) {
-                        client.post(`/api/v1/environments/${environment.api_key}/user-group-permissions/`, { group: group.id, admin: true });
+                        client.post(`/api/v1/environments/${environment.api_key}/user-group-permissions/`, { ...groupPermissionSpecification, group: group.id });
                     }
                 });
             }));
