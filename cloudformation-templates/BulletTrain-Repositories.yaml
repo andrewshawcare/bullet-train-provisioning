@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+  ApiRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      ImageScanningConfiguration:
+        scanOnPush: true
+      ImageTagMutability: IMMUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+      RepositoryName: bullet-train/api
+      RepositoryPolicyText: |
+        {
+          "Version": "2008-10-17",
+          "Statement": [
+            {
+              "Sid": "AllowPull",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": [
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage",
+                "ecr:BatchCheckLayerAvailability"
+              ]
+            },
+            {
+              "Sid": "AllowPush",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": [
+                "ecr:PutImage",
+                "ecr:InitiateLayerUpload",
+                "ecr:UploadLayerPart",
+                "ecr:CompleteLayerUpload"
+              ]
+            }
+          ]
+        }
+  APIProvisionerRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      ImageScanningConfiguration:
+        scanOnPush: true
+      ImageTagMutability: IMMUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+      RepositoryName: bullet-train/api-provisioner
+      RepositoryPolicyText: |
+        {
+          "Version": "2008-10-17",
+          "Statement": [
+            {
+              "Sid": "AllowPull",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": [
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage",
+                "ecr:BatchCheckLayerAvailability"
+              ]
+            },
+            {
+              "Sid": "AllowPush",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": [
+                "ecr:PutImage",
+                "ecr:InitiateLayerUpload",
+                "ecr:UploadLayerPart",
+                "ecr:CompleteLayerUpload"
+              ]
+            }
+          ]
+        }

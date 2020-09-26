@@ -1,0 +1,36 @@
+version: "3"
+services:
+  postgres:
+    image: postgres:10.6-alpine
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: bullettrain
+  api:
+    build: ./api
+    environment:
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_INITIAL_PASSWORD: password
+      DJANGO_ALLOWED_HOSTS: localhost
+      DJANGO_DB_NAME: bullettrain
+      DJANGO_DB_USER: postgres
+      DJANGO_DB_PASSWORD: password
+      DJANGO_DB_PORT: 5432
+      DJANGO_DB_HOST: postgres
+    ports:
+      - "8000:8000"
+  api-provisioner:
+    build: ./api-provisioner
+    environment:
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_INITIAL_PASSWORD: password
+      API_HOSTNAME: api
+      API_PORT: 8000
+      FRONTEND_URL: http://localhost:8080/
+      SPECIFICATION_PATH: /src/specification/development.yaml
+  frontend:
+    image: bullettrain/frontend:latest
+    environment:
+      API_URL: http://localhost:8000/api/v1/
+      ASSET_URL: http://localhost:8080/
+    ports:
+      - "8080:8080"

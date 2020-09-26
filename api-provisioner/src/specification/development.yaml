@@ -1,0 +1,30 @@
+organisations:
+  - name: Example Organisation
+    users:
+      - email: admin@example.com
+    groups:
+      - name: Development
+        users:
+          - admin@example.com
+    projects:
+      - name: Example Project
+        groupPermissions:
+          - group: Development
+            admin: false
+            permissions: [ VIEW_PROJECT ]
+        environments:
+          - name: Development
+            groupPermissions:
+              - group: Development
+                admin: true
+                permissions: []
+          - name: Quality assurance
+            groupPermissions: []
+          - name: System integration
+            groupPermissions: []
+          - name: User acceptance
+            groupPermissions: []
+          - name: Staging
+            groupPermissions: []
+          - name: Production
+            groupPermissions: []

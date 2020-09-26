@@ -1,0 +1,408 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  Version:
+    Type: String
+  CertificateArn:
+    Type: String
+Resources:
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub ${AWS::StackName}-DB
+      GenerateSecretString:
+        ExcludePunctuation: true
+        GenerateStringKey: MasterUserPassword
+        SecretStringTemplate: |
+          {
+            "DatabaseName": "bullettrain",
+            "MasterUsername": "bullettrain"
+          }
+  DBInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${AWS::StackName}-DBCluster
+      GroupName: !Sub ${AWS::StackName}-DBCluster
+      SecurityGroupEgress:
+        - DestinationSecurityGroupId: !Ref ApiServiceSecurityGroup
+          Description: Allow outbound Postgresql traffic to the VPC
+          FromPort: 5432
+          ToPort: 5432
+          IpProtocol: tcp
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref ApiServiceSecurityGroup
+          Description: Allow inbound Postgresql traffic from the VPC
+          FromPort: 5432
+          ToPort: 5432
+          IpProtocol: tcp
+      VpcId: 
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Ref AWS::StackName
+      SubnetIds: []
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 100
+      DBInstanceClass: db.t3.micro
+      DBInstanceIdentifier: !Ref AWS::StackName
+      DBName: !Sub "{{resolve:secretsmanager:${AWS::StackName}-DB:SecretString:DatabaseName}}"
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      Engine: postgres
+      EngineVersion: 12.2
+      MasterUsername: !Sub "{{resolve:secretsmanager:${AWS::StackName}-DB:SecretString:MasterUsername}}"
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${AWS::StackName}-DB:SecretString:MasterUserPassword}}"
+      VPCSecurityGroups:
+        - !Ref DBInstanceSecurityGroup
+  ServiceSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub ${AWS::StackName}-Service
+      GenerateSecretString:
+        ExcludePunctuation: true
+        GenerateStringKey: AdminInitialPassword
+        SecretStringTemplate: |
+          {
+            "AdminEmail": "admin@example.com"
+          }
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref AWS::StackName
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${AWS::StackName}-LoadBalancer
+      GroupName: !Sub ${AWS::StackName}-LoadBalancer
+      SecurityGroupEgress:
+        - CidrIp: '0.0.0.0/0'
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+      SecurityGroupIngress:
+        - CidrIp: '0.0.0.0/0'
+          Description: Allow all inbound frontend HTTP traffic
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+        - CidrIp: '0.0.0.0/0'
+          Description: Allow all inbound frontend HTTPS traffic
+          FromPort: 443
+          ToPort: 443
+          IpProtocol: tcp
+      VpcId: 
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      SecurityGroups:
+        - !GetAtt LoadBalancerSecurityGroup.GroupId
+      Subnets: []
+  WebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Ref AWS::StackName
+      DefaultAction:
+        Allow: {}
+      Rules:
+        - Name: AWSManagedRulesCommonRuleSet
+          OverrideAction:
+            None: {}
+          Priority: 0
+          Statement:
+            ManagedRuleGroupStatement:
+              Name: AWSManagedRulesCommonRuleSet
+              VendorName: AWS
+              ExcludedRules:
+                - Name: NoUserAgent_HEADER
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesCommonRuleSet
+            SampledRequestsEnabled: true
+        - Name: AWSManagedRulesKnownBadInputsRuleSet
+          OverrideAction:
+            None: {}
+          Priority: 1
+          Statement:
+            ManagedRuleGroupStatement:
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+              VendorName: AWS
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesKnownBadInputsRuleSet
+            SampledRequestsEnabled: true
+        - Name: AWSManagedRulesSQLiRuleSet
+          OverrideAction:
+            None: {}
+          Priority: 2
+          Statement:
+            ManagedRuleGroupStatement:
+              Name: AWSManagedRulesSQLiRuleSet
+              VendorName: AWS
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesSQLiRuleSet
+            SampledRequestsEnabled: true
+        - Name: AWSManagedRulesLinuxRuleSet
+          OverrideAction:
+            None: {}
+          Priority: 3
+          Statement:
+            ManagedRuleGroupStatement:
+              Name: AWSManagedRulesLinuxRuleSet
+              VendorName: AWS
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesLinuxRuleSet
+            SampledRequestsEnabled: true
+        - Name: AWSManagedRulesUnixRuleSet
+          OverrideAction:
+            None: {}
+          Priority: 4
+          Statement:
+            ManagedRuleGroupStatement:
+              Name: AWSManagedRulesUnixRuleSet
+              VendorName: AWS
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesUnixRuleSet
+            SampledRequestsEnabled: true
+        - Name: AWSManagedRulesAmazonIpReputationList
+          OverrideAction:
+            None: {}
+          Priority: 5
+          Statement:
+            ManagedRuleGroupStatement:
+              Name: AWSManagedRulesAmazonIpReputationList
+              VendorName: AWS
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesAmazonIpReputationList
+            SampledRequestsEnabled: true
+      Scope: REGIONAL
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub ${AWS::StackName}-WebACL
+        SampledRequestsEnabled: true
+  WebACLAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !Ref LoadBalancer
+      WebACLArn: !GetAtt WebACL.Arn
+  FrontendServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${AWS::StackName}-FrontendService
+      GroupName: !Sub ${AWS::StackName}-FrontendService
+      SecurityGroupEgress:
+        - CidrIp: '0.0.0.0/0'
+          Description: Allow all outbound TCP traffic
+          IpProtocol: -1
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !GetAtt LoadBalancerSecurityGroup.GroupId
+          Description: Allow inbound HTTP traffic from the VPC
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+      VpcId:
+  ApiServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${AWS::StackName}-ApiService
+      GroupName: !Sub ${AWS::StackName}-ApiService
+      SecurityGroupEgress:
+        - CidrIp: '0.0.0.0/0'
+          Description: Allow all outbound TCP traffic
+          IpProtocol: -1
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !GetAtt LoadBalancerSecurityGroup.GroupId
+          Description: Allow inbound HTTP traffic from the VPC
+          FromPort: 8000
+          ToPort: 8000
+          IpProtocol: tcp
+      VpcId:
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${AWS::StackName}
+      RetentionInDays: 7
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Environment:
+          - Name: ADMIN_EMAIL
+            Value: !Sub "{{resolve:secretsmanager:${AWS::StackName}-Service:SecretString:AdminEmail}}"
+          - Name: ADMIN_INITIAL_PASSWORD
+            Value: !Sub "{{resolve:secretsmanager:${AWS::StackName}-Service:SecretString:AdminInitialPassword}}"
+          - Name: DJANGO_ALLOWED_HOSTS
+            Value: localhost
+          - Name: DJANGO_DB_NAME
+            Value: !Sub "{{resolve:secretsmanager:${AWS::StackName}-DB:SecretString:DatabaseName}}"
+          - Name: DJANGO_DB_USER
+            Value: !Sub "{{resolve:secretsmanager:${AWS::StackName}-DB:SecretString:MasterUsername}}"
+          - Name: DJANGO_DB_PASSWORD
+            Value: !Sub "{{resolve:secretsmanager:${AWS::StackName}-DB:SecretString:MasterUserPassword}}"
+          - Name: DJANGO_DB_PORT
+            Value: 5432
+          - Name: DJANGO_DB_HOST
+            Value: !GetAtt DBInstance.Endpoint.Address
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/bullet-train/api:${Version}
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: api
+          Name: api
+          PortMappings:
+            - ContainerPort: 8000
+        - Environment:
+          - Name: API_URL
+            Value:
+          - Name: ASSET_URL
+            Value:
+          - Name: PORT
+            Value: 80
+          Image: bullettrain/frontend:latest
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: frontend
+          Name: frontend
+          PortMappings:
+            - ContainerPort: 80
+        - Environment:
+          - Name: ADMIN_EMAIL
+            Value: !Sub "{{resolve:secretsmanager:${AWS::StackName}-Service:SecretString:AdminEmail}}"
+          - Name: ADMIN_INITIAL_PASSWORD
+            Value: !Sub "{{resolve:secretsmanager:${AWS::StackName}-Service:SecretString:AdminInitialPassword}}"
+          - Name: API_HOSTNAME
+            Value: localhost
+          - Name: API_PORT
+            Value: 8000
+          - Name: FRONTEND_URL
+            Value:
+          - Name: SPECIFICATION_PATH
+            Value: /src/specification/production.yaml
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/bullet-train/api-provisioner:${Version}
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: api-provisioner
+          Name: api-provisioner
+          Essential: false
+      Cpu: 4096
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      Family: !Ref AWS::StackName
+      Memory: 16384
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !GetAtt TaskRole.Arn
+  FrontendTargetGroup:
+    DependsOn:
+      - LoadBalancer
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip
+      VpcId:
+  ApiTargetGroup:
+    DependsOn:
+      - LoadBalancer
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 8000
+      Protocol: HTTP
+      TargetType: ip
+      VpcId:
+  HttpToHttpsRedirectListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            StatusCode: HTTP_301
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontendTargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+  ApiListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ApiTargetGroup
+      Conditions:
+        - Field: path-pattern
+          PathPatternConfig:
+            Values: ['/api/v1/*']
+      ListenerArn: !Ref Listener
+      Priority: 1
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - Listener
+      - ApiListenerRule
+    Properties:
+      Cluster: !Ref Cluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: frontend
+          ContainerPort: 80
+          TargetGroupArn: !Ref FrontendTargetGroup
+        - ContainerName: api
+          ContainerPort: 8000
+          TargetGroupArn: !Ref ApiTargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref FrontendServiceSecurityGroup
+            - !Ref ApiServiceSecurityGroup
+          Subnets: []
+      TaskDefinition: !Ref TaskDefinition
